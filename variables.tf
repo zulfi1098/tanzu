@@ -1,10 +1,3 @@
-variable "prefix" {
-  description = "The prefix used for all resources in this tkg"
-  type=string
-  default="tkg"
-  
-}
-
 variable "location" {
   description = "The Azure location where all resources in this tkg should be created"
   type=string
@@ -18,7 +11,7 @@ variable "publicipprefixname" {
 
 variable "cluster" {
   type = object({
-       gmt-cluster-name = string
+       mgmt-cluster-name = string
        workload-cluster-name = string
        vnet_name_TKG = string
        vnet_cidr_TKG = string 
@@ -41,8 +34,11 @@ variable "cluster" {
        vm_size = string 
        vm_admin_name = string 
        vm_admin_pwd = string 
+       publicipname = string
+       natgatewayname = string
+       publicipprefixname = string
   })
-  default =   {
+  default = {
         mgmt-cluster-name = "mgmt-cluster1098" 
         workload-cluster-name = "workload-cluster"
         vnet_name_TKG  = "vnet-tkg"  
@@ -66,15 +62,28 @@ variable "cluster" {
         vm_size = "Standard_D2s_V3"
         vm_admin_name = "demoadmin"
         vm_admin_pwd = "d@@@@1234AAAA" 
+        publicipname  = "tkg-public-ip"
+        natgatewayname = "tkg-nat-gw"
+        publicipprefixname = "tkg-public-ip-prefix"
   }
 
 }
 
-variable "nsg_name"{
+
+
+
+variable "nsg_name" {
+  type = object({
+    nsg_name_mgmt_worker            = string
+    nsg_name_workload_worker        = string
+    nsg_name_mgmt_control_plane     = string
+    nsg_name_workload_control_plane = string
+  })
+
   default = {
-    nsg_name_mgmt_worker = "${variable.cluster.mgmt-cluster-name}-node-nsg"
-    nsg_name_workload_worker = "${variable.cluster.workload-cluster-name}-node-nsg"
-    nsg_name_mgmt_control_plane = "${variable.cluster.mgmt-cluster-name}-controlplane-nsg"
-    nsg_name_workload_control_plane = "${variable.cluster.workload-cluster-name}-controlplane-nsg"
+    nsg_name_mgmt_worker            = "mgmt-cluster1098-node-nsg"
+    nsg_name_workload_worker        = "nsg-MgmtControlPlane-node-nsg"
+    nsg_name_mgmt_control_plane     = "mgmt-cluster1098-controlplane-nsg"
+    nsg_name_workload_control_plane = "nsg-WorkloadControlPlane-controlplane-nsg"
   }
-  }
+}

@@ -1,7 +1,7 @@
 resource "azurerm_virtual_machine" "vm_name_Bootstrap" {
   name = var.cluster.vm_name_Bootstrap
   resource_group_name = azurerm_resource_group.rg.id
-  location = variable.location
+  location = var.location
   network_interface_ids = [azurerm_network_interface.nic_name_Bootstrap.id]
   
   vm_size = var.cluster.vm_size

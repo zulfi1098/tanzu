@@ -4,7 +4,7 @@ resource "azurerm_nat_gateway" "natgatewayname" {
     resource_group_name = azurerm_resource_group.rg.id
     depends_on = [ 
                     azurerm_public_ip.publicipname, 
-                    azurerm_public_ip.publicipprefixname 
+                    azurerm_public_ip_prefix.publicipprefixname 
         ]
 
     idle_timeout_in_minutes =4
