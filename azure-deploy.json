@@ -1,0 +1,563 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "mgmt-cluster-name": {
+            "defaultValue": "mgmt-cluster",
+            "type": "string"
+        },
+        "workload-cluster-name": {
+            "defaultValue": "workload-cluster",
+            "type": "string"
+        },
+        "vnet_name_TKG": {
+            "defaultValue": "vnet-tkg",
+            "type": "string"
+        },
+        "vnet_cidr_TKG" : {
+            "defaultValue": "10.0.0.0/16",
+            "type": "string"
+        },
+        "subnet_name_Bootstrap" : {
+            "defaultValue": "subnetBootstrap",
+            "type": "string"
+        },
+        "subnet_cidr_Bootstrap" : {
+            "defaultValue": "10.0.0.0/24",
+            "type": "string"
+        },
+        "nsg_name_nic_Bootstrap": {
+            "defaultValue": "nsg-vm-bootstrap",
+            "type": "string"
+        },
+        "subnet_name_MgmtControl" : {
+            "defaultValue" : "subnetMgmtControlPlane",
+            "type" : "string"
+        },
+        "subnet_cidr_MgmtControl" : {
+            "defaultValue" : "10.0.1.0/24",
+            "type" : "string"
+        },
+        "subnet_name_MgmtWorker" : {
+            "defaultValue" : "subnetMgmtWorker",
+            "type" : "string"
+        },
+        "subnet_cidr_MgmtWorker" : {
+            "defaultValue" : "10.0.2.0/24",
+            "type" : "string"
+        },
+        "subnet_name_WorkloadControl" : {
+            "defaultValue" : "subnetWorkloadControlPlane",
+            "type" : "string"
+        },
+        "subnet_cidr_WorkloadControl" : {
+            "defaultValue" : "10.0.3.0/24",
+            "type" : "string"
+        },
+        "subnet_name_WorkloadWorker" : {
+            "defaultValue" : "subnetWorkloadWorker",
+            "type" : "string"
+        },
+        "subnet_cidr_WorkloadWorker" : {
+            "defaultValue" : "10.0.4.0/24",
+            "type" : "string"
+        },
+        "vm_name_Bootstrap": {
+            "defaultValue": "bch-vm-bootstrap-ubuntu",
+            "type": "string"
+        },
+        "nic_name_Bootstrap": {
+            "defaultValue": "vm-bootstrap-ubu2004",
+            "type": "string"
+        },
+        "pip_name_vm_bootstrap": {
+            "defaultValue": "bch-vm-bootstrap-ubuntu-ip",
+            "type": "string"
+        },
+        "vm_size": {
+            "defaultValue": "Standard_D2s_V3",
+            "type": "string"
+        },
+        "vm_admin_name": {
+            
+            "type": "string"
+        },
+        "vm_admin_pwd": {
+            
+            "type": "string"
+        },
+        "publicipname": {
+            "defaultValue": "tkg-public-ip",
+            "type": "string",
+            "metadata": {
+              "description": "Name of the NAT gateway public IP"
+            }
+          },
+        "publicipprefixname": {
+            "defaultValue": "tkg-public-ip-prefix",
+            "type": "string",
+            "metadata": {
+            "description": "Name of the NAT gateway public IP"
+            }
+      },
+      "natgatewayname": {
+        "defaultValue": "tkg-nat-gw",
+        "type": "string",
+        "metadata": {
+          "description": "Name of the NAT gateway"
+        }
+      }
+    },
+
+    "variables": {
+        "nsg_name_mgmt_worker": "[concat(parameters('mgmt-cluster-name'), '-node-nsg')]",
+        "nsg_name_workload_worker": "[concat(parameters('workload-cluster-name'), '-node-nsg')]",
+        "nsg_name_mgmt_control_plane": "[concat(parameters('mgmt-cluster-name'), '-controlplane-nsg')]",
+        "nsg_name_workload_control_plane": "[concat(parameters('workload-cluster-name'), '-controlplane-nsg')]"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Network/publicIPAddresses",
+            "apiVersion": "2020-06-01",
+            "name": "[parameters('publicipname')]",
+            "location": "[resourceGroup().location]",
+            "sku": {
+              "name": "Standard"
+            },
+            "properties": {
+              "publicIPAddressVersion": "IPv4",
+              "publicIPAllocationMethod": "Static",
+              "idleTimeoutInMinutes": 4
+            }
+          },
+		 {
+            "apiVersion": "2020-06-01",
+            "type": "Microsoft.Network/publicIPPrefixes",
+            "name": "[parameters('publicipprefixname')]",
+            "location": "[resourceGroup().location]",
+            "zones": [],
+            "sku": {
+                "name": "Standard"
+            },
+            "properties": {
+                "prefixLength": 29
+            }
+        }, 
+        {
+            "type": "Microsoft.Network/natGateways",
+            "apiVersion": "2020-06-01",
+            "name": "[parameters('natgatewayname')]",
+            "location": "[resourceGroup().location]",
+            "sku": {
+              "name": "Standard"
+            },
+            "dependsOn": [
+              "[resourceId('Microsoft.Network/publicIPAddresses', parameters('publicipname'))]",
+              "[resourceId('Microsoft.Network/publicIPPrefixes', parameters('publicipprefixname'))]"
+            ],
+            "properties": {
+              "idleTimeoutInMinutes": 4,
+              "publicIpAddresses": [
+                {
+                  "id": "[resourceId('Microsoft.Network/publicIPAddresses', parameters('publicipname'))]"
+                }
+              ],
+              "publicIpPrefixes":[
+				{
+				  	"id":"[resourceId('Microsoft.Network/publicIPPrefixes', parameters('publicipprefixname'))]"
+			  	}
+			  ]
+            }
+        },      
+        
+        {
+            "type": "Microsoft.Network/virtualNetworks",
+            "apiVersion": "2020-11-01",
+            "name": "[parameters('vnet_name_TKG')]",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsg_name_mgmt_control_plane'))]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsg_name_mgmt_worker'))]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsg_name_workload_control_plane'))]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsg_name_workload_worker'))]",
+                "[resourceId('Microsoft.Network/natGateways', parameters('natgatewayname'))]"
+            ],
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [ "[parameters('vnet_cidr_TKG')]" ]
+                },
+                "subnets": [
+                    {
+                        "name": "[parameters('subnet_name_Bootstrap')]",
+                        "properties": {
+                            "addressPrefix": "[parameters('subnet_cidr_Bootstrap')]",
+                            "natGateway": {
+                                "id": "[resourceId('Microsoft.Network/natGateways', parameters('natgatewayname'))]"
+                              },
+                            "delegations": [],
+                            "privateEndpointNetworkPolicies": "Enabled",
+                            "privateLinkServiceNetworkPolicies": "Enabled"
+                        }
+                    },
+                    {
+                        "name": "[parameters('subnet_name_MgmtControl')]",
+                        "properties": {
+                            "addressPrefix": "[parameters('subnet_cidr_MgmtControl')]",
+                            "natGateway": {
+                                "id": "[resourceId('Microsoft.Network/natGateways', parameters('natgatewayname'))]"
+                              },
+                            "networkSecurityGroup": {
+                                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsg_name_mgmt_control_plane'))]"
+                            },
+                            "serviceEndpoints": [],
+                            "delegations": [],
+                            "privateEndpointNetworkPolicies": "Enabled",
+                            "privateLinkServiceNetworkPolicies": "Enabled"
+                        }
+                    },
+                    {
+                        "name": "[parameters('subnet_name_MgmtWorker')]",
+                        "properties": {
+                            "addressPrefix": "[parameters('subnet_cidr_MgmtWorker')]",
+                            "natGateway": {
+                                "id": "[resourceId('Microsoft.Network/natGateways', parameters('natgatewayname'))]"
+                              },
+                            "networkSecurityGroup": {
+                                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsg_name_mgmt_worker'))]"
+                            },
+                            "serviceEndpoints": [],
+                            "delegations": [],
+                            "privateEndpointNetworkPolicies": "Enabled",
+                            "privateLinkServiceNetworkPolicies": "Enabled"
+                        }
+                    },
+                    {
+                        "name": "[parameters('subnet_name_WorkloadControl')]",
+                        "properties": {
+                            "addressPrefix": "[parameters('subnet_cidr_WorkloadControl')]",
+                            "natGateway": {
+                                "id": "[resourceId('Microsoft.Network/natGateways', parameters('natgatewayname'))]"
+                              },
+                            "networkSecurityGroup": {
+                                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsg_name_workload_control_plane'))]"
+                            },
+                            "serviceEndpoints": [],
+                            "delegations": [],
+                            "privateEndpointNetworkPolicies": "Enabled",
+                            "privateLinkServiceNetworkPolicies": "Enabled"
+                        }
+                    },
+                    {
+                        "name": "[parameters('subnet_name_WorkloadWorker')]",
+                        "properties": {
+                            "addressPrefix": "[parameters('subnet_cidr_WorkloadWorker')]",
+                            "natGateway": {
+                                "id": "[resourceId('Microsoft.Network/natGateways', parameters('natgatewayname'))]"
+                              },
+                            "networkSecurityGroup": {
+                                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsg_name_workload_worker'))]"
+                            },
+                            "serviceEndpoints": [],
+                            "delegations": [],
+                            "privateEndpointNetworkPolicies": "Enabled",
+                            "privateLinkServiceNetworkPolicies": "Enabled"
+                        }
+                    }
+                ],
+                "virtualNetworkPeerings": [],
+                "enableDdosProtection": false
+            }
+        },
+        {
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "2020-11-01",
+            "name": "[parameters('nsg_name_nic_Bootstrap')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "securityRules": [
+                    {
+                        "name": "SSH",
+                        "properties": {
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "22",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 300,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    },
+                    {
+                        "name": "Port_6443",
+                        "properties": {
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "6443",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 310,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "2020-11-01",
+            "name": "[variables('nsg_name_workload_worker')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "securityRules": []
+            }
+        },
+        {
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "2020-11-01",
+            "name": "[variables('nsg_name_mgmt_control_plane')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "securityRules": [
+                    {
+                        "name": "Port_SSH",
+                        "properties": {
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "22",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 100,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    },
+                    {
+                        "name": "Port_6443",
+                        "properties": {
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "6443",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 110,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    },
+                    {
+                        "name": "SaaS_Pinniped_443",
+                        "properties": {
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "443",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 320,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "2020-11-01",
+            "name": "[variables('nsg_name_mgmt_worker')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "securityRules": []
+            }
+        },
+        {
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "2020-11-01",
+            "name": "[variables('nsg_name_workload_control_plane')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "securityRules": [
+                    {
+                        "name": "SSH",
+                        "properties": {
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "22",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 300,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    },
+                    {
+                        "name": "Port_6443",
+                        "properties": {
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "6443",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 310,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    },
+                    {
+                        "name": "SaaS_Services_443",
+                        "properties": {
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "443",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 320,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Compute/virtualMachines",
+            "apiVersion": "2021-07-01",
+            "name": "[parameters('vm_name_Bootstrap')]",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkInterfaces', parameters('nic_name_Bootstrap'))]"
+            ],
+            "properties": {
+                "hardwareProfile": {
+                    "vmSize": "[parameters('vm_size')]"
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "publisher": "canonical",
+                        "offer": "0001-com-ubuntu-server-focal",
+                        "sku": "20_04-lts",
+                        "version": "latest"
+                    },
+                    "osDisk": {
+                        "osType": "Linux",
+                        "name": "[concat(parameters('vm_name_Bootstrap'), '_OsDisk')]",
+                        "createOption": "FromImage",
+                        "caching": "ReadWrite"
+                    },
+                    "dataDisks": []
+                },
+                "osProfile": {
+                    "computerName": "[parameters('vm_name_Bootstrap')]",
+                    "adminUsername": "[parameters('vm_admin_name')]",
+                    "adminPassword": "[parameters('vm_admin_pwd')]",
+                    "linuxConfiguration": {
+                        "disablePasswordAuthentication": false,
+                        "provisionVMAgent": true,
+                        "patchSettings": {
+                            "patchMode": "ImageDefault",
+                            "assessmentMode": "ImageDefault"
+                        }
+                    }
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', parameters('nic_name_Bootstrap'))]"
+                        }
+                    ]
+                },
+                "diagnosticsProfile": {
+                    "bootDiagnostics": {
+                        "enabled": true
+                    }
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Network/networkInterfaces",
+            "apiVersion": "2020-11-01",
+            "name": "[parameters('nic_name_Bootstrap')]",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/publicIPAddresses', parameters('pip_name_vm_bootstrap'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnet_name_TKG'))]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('nsg_name_nic_Bootstrap'))]"
+            ],
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig1",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses', parameters('pip_name_vm_bootstrap'))]"
+                            },
+                            "subnet": {
+                                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('vnet_name_TKG'), parameters('subnet_name_Bootstrap'))]"
+                            },
+                            "primary": true,
+                            "privateIPAddressVersion": "IPv4"
+                        }
+                    }
+                ],
+                "dnsSettings": {
+                    "dnsServers": []
+                },
+                "enableAcceleratedNetworking": true,
+                "enableIPForwarding": false,
+                "networkSecurityGroup": {
+                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('nsg_name_nic_Bootstrap'))]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Network/publicIPAddresses",
+            "apiVersion": "2020-11-01",
+            "name": "[parameters('pip_name_vm_bootstrap')]",
+            "location": "[resourceGroup().location]",
+            "sku": {
+                "name": "Standard",
+                "tier": "Regional"
+            },
+            "properties": {
+                "publicIPAddressVersion": "IPv4",
+                "publicIPAllocationMethod": "Static",
+                "idleTimeoutInMinutes": 4,
+                "ipTags": []
+            }
+        }
+    ]
+}
